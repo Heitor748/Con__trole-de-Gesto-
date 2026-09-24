@@ -1,37 +1,18 @@
 import 'dart:convert';
 
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:http/http.dart' as http;
 
-/// Singleton service that wraps Google Gemini AI for firewood-note OCR analysis.
-class GeminiService {
-  GeminiService._();
-  static final GeminiService instance = GeminiService._();
+/// Singleton service that wraps xAI's Grok API for firewood-note OCR analysis.
+///
+/// Uses Grok's OpenAI-compatible chat completions endpoint.
+class GrokService {
+  GrokService._();
+  static final GrokService instance = GrokService._();
 
-  // Lazily initialised so dotenv is read only after it has been loaded.
-  GenerativeModel? _model;
-
-  GenerativeModel get _gemini {
-    if (_model != null) return _model!;
-
-    final String apiKey = dotenv.env['GEMINI_API_KEY'] ?? '';
-    if (apiKey.isEmpty) {
-      throw StateError(
-        'GeminiService: GEMINI_API_KEY not found in .env file. '
-        'Make sure flutter_dotenv is loaded before using GeminiService.',
-      );
-    }
-
-    _model = GenerativeModel(
-      model: 'gemini-1.5-flash',
-      apiKey: apiKey,
-      generationConfig: GenerationConfig(
-        responseMimeType: 'application/json',
-        temperature: 0.1, // low temperature for structured extraction
-      ),
-    );
-    return _model!;
-  }
+  static const String _endpoint =
+      'https://api.x.ai/v1/chat/completions';
+  static const String _model = 'grok-4-fast';
 
   // ─── Public API ───────────────────────────────────────────────────────────────
 
@@ -42,29 +23,59 @@ class GeminiService {
   /// `numero_nota`, `data`, `motorista`, `placa`, `cliente`, `projeto`,
   /// `s1`, `m2`, `total_m3`.
   ///
-  /// Values may be `null` when Gemini cannot identify a field.
+  /// Values may be `null` when Grok cannot identify a field.
   Future<Map<String, dynamic>> analyzeNotaText(String ocrText) async {
     if (ocrText.trim().isEmpty) {
       return _emptyResult();
     }
 
+    final String apiKey = dotenv.env['GROK_API_KEY'] ?? '';
+    if (apiKey.isEmpty) {
+      throw StateError(
+        'GrokService: GROK_API_KEY not found in .env file. '
+        'Make sure flutter_dotenv is loaded before using GrokService.',
+      );
+    }
+
     final String prompt = _buildPrompt(ocrText);
 
     try {
-      final GenerateContentResponse response = await _gemini.generateContent(
-        [Content.text(prompt)],
+      final http.Response response = await http.post(
+        Uri.parse(_endpoint),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $apiKey',
+        },
+        body: jsonEncode({
+          'model': _model,
+          'messages': [
+            {'role': 'user', 'content': prompt},
+          ],
+          'temperature': 0.1,
+          'response_format': {'type': 'json_object'},
+        }),
       );
 
-      final String? text = response.text;
+      if (response.statusCode != 200) {
+        throw Exception(
+          'GrokService.analyzeNotaText: Grok API error – '
+          '${response.statusCode} ${response.body}',
+        );
+      }
+
+      final Map<String, dynamic> decoded =
+          jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      final String? text = (decoded['choices'] as List?)
+          ?.cast<Map<String, dynamic>>()
+          .firstOrNull?['message']?['content'] as String?;
+
       if (text == null || text.trim().isEmpty) {
         return _emptyResult();
       }
 
       return _parseResponse(text);
-    } on GenerativeAIException catch (e) {
-      throw Exception('GeminiService.analyzeNotaText: Gemini API error – $e');
     } catch (e) {
-      throw Exception('GeminiService.analyzeNotaText: unexpected error – $e');
+      throw Exception('GrokService.analyzeNotaText: unexpected error – $e');
     }
   }
 
@@ -103,7 +114,7 @@ Regras:
 
   Map<String, dynamic> _parseResponse(String text) {
     // Strip possible markdown code fences that the model may add despite the
-    // responseMimeType hint.
+    // response_format hint.
     String clean = text.trim();
     if (clean.startsWith('```')) {
       clean = clean
@@ -120,8 +131,7 @@ Regras:
       return _emptyResult();
     } on FormatException {
       // Try to locate a JSON object inside the text as a fallback.
-      final Match? match =
-          RegExp(r'\{[\s\S]*\}').firstMatch(clean);
+      final Match? match = RegExp(r'\{[\s\S]*\}').firstMatch(clean);
       if (match != null) {
         try {
           final dynamic decoded = jsonDecode(match.group(0)!);
@@ -143,4 +153,8 @@ Regras:
         'm2': null,
         'total_m3': null,
       };
+}
+
+extension _FirstOrNull<T> on List<T> {
+  T? get firstOrNull => isEmpty ? null : first;
 }

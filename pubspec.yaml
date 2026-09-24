@@ -25,9 +25,6 @@ dependencies:
   # HTTP
   http: ^1.2.1
 
-  # Google AI (Gemini)
-  google_generative_ai: ^0.4.3
-
   # Google Sign-In & APIs
   google_sign_in: ^6.2.1
   googleapis: ^13.2.0

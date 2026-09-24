@@ -3,16 +3,16 @@ import 'dart:convert';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 
-/// Singleton service that wraps xAI's Grok API for firewood-note OCR analysis.
+/// Singleton service that wraps Groq's API for firewood-note OCR analysis.
 ///
-/// Uses Grok's OpenAI-compatible chat completions endpoint.
-class GrokService {
-  GrokService._();
-  static final GrokService instance = GrokService._();
+/// Uses Groq's OpenAI-compatible chat completions endpoint.
+class GroqService {
+  GroqService._();
+  static final GroqService instance = GroqService._();
 
   static const String _endpoint =
-      'https://api.x.ai/v1/chat/completions';
-  static const String _model = 'grok-4-fast';
+      'https://api.groq.com/openai/v1/chat/completions';
+  static const String _model = 'llama-3.3-70b-versatile';
 
   // ─── Public API ───────────────────────────────────────────────────────────────
 
@@ -23,17 +23,17 @@ class GrokService {
   /// `numero_nota`, `data`, `motorista`, `placa`, `cliente`, `projeto`,
   /// `s1`, `m2`, `total_m3`.
   ///
-  /// Values may be `null` when Grok cannot identify a field.
+  /// Values may be `null` when Groq cannot identify a field.
   Future<Map<String, dynamic>> analyzeNotaText(String ocrText) async {
     if (ocrText.trim().isEmpty) {
       return _emptyResult();
     }
 
-    final String apiKey = dotenv.env['GROK_API_KEY'] ?? '';
+    final String apiKey = dotenv.env['GROQ_API_KEY'] ?? '';
     if (apiKey.isEmpty) {
       throw StateError(
-        'GrokService: GROK_API_KEY not found in .env file. '
-        'Make sure flutter_dotenv is loaded before using GrokService.',
+        'GroqService: GROQ_API_KEY not found in .env file. '
+        'Make sure flutter_dotenv is loaded before using GroqService.',
       );
     }
 
@@ -58,7 +58,7 @@ class GrokService {
 
       if (response.statusCode != 200) {
         throw Exception(
-          'GrokService.analyzeNotaText: Grok API error – '
+          'GroqService.analyzeNotaText: Groq API error – '
           '${response.statusCode} ${response.body}',
         );
       }
@@ -75,7 +75,7 @@ class GrokService {
 
       return _parseResponse(text);
     } catch (e) {
-      throw Exception('GrokService.analyzeNotaText: unexpected error – $e');
+      throw Exception('GroqService.analyzeNotaText: unexpected error – $e');
     }
   }
 

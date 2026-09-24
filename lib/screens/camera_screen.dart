@@ -5,7 +5,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../app/routes.dart';
 import '../services/ocr_service.dart';
-import '../services/grok_service.dart';
+import '../services/groq_service.dart';
 
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
@@ -74,9 +74,9 @@ class _CameraScreenState extends State<CameraScreen> {
       if (!mounted) return;
       setState(() => _statusText = 'Analisando com IA...');
 
-      // Step 2 – Grok AI analysis
+      // Step 2 – Groq AI analysis
       final Map<String, dynamic> extractedData =
-          await GrokService.instance.analyzeNotaText(ocrText);
+          await GroqService.instance.analyzeNotaText(ocrText);
 
       if (!mounted) return;
 

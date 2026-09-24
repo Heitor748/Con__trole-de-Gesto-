@@ -1,0 +1,34 @@
+# Example nginx server block for the Controle de Lenha TRBJ web app + Drive proxy.
+#
+# - Serves the Flutter web build (build/web) as static files.
+# - Reverse-proxies /api/ to the Node.js Drive proxy (backend/) running on
+#   127.0.0.1:8080 (see backend/README.md).
+#
+# Copy to /etc/nginx/sites-available/controle-lenha, adjust paths/domain,
+# then: ln -s /etc/nginx/sites-available/controle-lenha /etc/nginx/sites-enabled/
+# and reload nginx.
+
+server {
+    listen 80;
+    server_name your-vps-domain.example.com;
+
+    root /var/www/controle-lenha/web;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        client_max_body_size 20m;
+    }
+}
+
+# After this is working, run `certbot --nginx -d your-vps-domain.example.com`
+# to add HTTPS (required for camera access from the browser).

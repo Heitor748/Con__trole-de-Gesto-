@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
@@ -172,9 +171,7 @@ class _OcrReviewScreenState extends State<OcrReviewScreen> {
       await SupabaseService.instance.insertNota(nota);
 
       // ── Optionally upload to Drive ──────────────────────────────────────────
-      // Skipped on web: the service account credential is bundled as an
-      // asset and would be publicly downloadable from a deployed web build.
-      if (!kIsWeb && _imageBytes != null) {
+      if (_imageBytes != null) {
         final ext = p.extension(_imageName ?? 'nota.jpg').toLowerCase();
         final mimeType = (ext == '.png') ? 'image/png' : 'image/jpeg';
         final driveName =

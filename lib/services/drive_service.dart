@@ -1,92 +1,66 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:googleapis/drive/v3.dart' as drive;
-import 'package:googleapis_auth/auth_io.dart';
 import 'package:http/http.dart' as http;
 
-/// Singleton service that uploads files to Google Drive via Service Account.
+/// Singleton service that uploads files to Google Drive through the
+/// project's `backend/` proxy (see backend/README.md).
 ///
-/// The service account JSON is bundled at assets/service_account.json.
-/// The target Drive folder must be shared with the service account as Editor:
-///   silvaheitor@controle-de-lenha.iam.gserviceaccount.com
+/// The Google service account credential lives only on the server side —
+/// the app never handles it, which keeps it safe to run on the web.
 class DriveService {
   DriveService._();
   static final DriveService instance = DriveService._();
 
-  static const List<String> _scopes = [drive.DriveApi.driveFileScope];
-
   // ─── Public API ──────────────────────────────────────────────────────────────
 
-  /// Uploads [bytes] to Google Drive as [fileName].
+  /// Uploads [bytes] to Google Drive as [fileName] via the backend proxy.
   ///
-  /// [folderId] overrides the DRIVE_FOLDER_ID from .env.
-  /// Returns the webViewLink of the uploaded file, or null on error.
+  /// Returns the webViewLink of the uploaded file, or null on error/if the
+  /// proxy isn't configured.
   Future<String?> uploadFile(
     Uint8List bytes,
     String fileName,
-    String mimeType, {
-    String? folderId,
-  }) async {
+    String mimeType,
+  ) async {
     try {
-      final String targetFolder =
-          folderId ?? dotenv.env['DRIVE_FOLDER_ID'] ?? '';
+      final String baseUrl = dotenv.env['DRIVE_PROXY_URL'] ?? '';
+      final String apiKey = dotenv.env['DRIVE_PROXY_API_KEY'] ?? '';
+      if (baseUrl.isEmpty || apiKey.isEmpty) return null;
 
-      final http.Client authClient = await _buildAuthClient();
-
-      try {
-        final drive.DriveApi driveApi = drive.DriveApi(authClient);
-
-        final drive.File fileMetadata = drive.File()
-          ..name = fileName
-          ..mimeType = mimeType
-          ..parents = targetFolder.isNotEmpty ? [targetFolder] : null;
-
-        final drive.File uploaded = await driveApi.files.create(
-          fileMetadata,
-          uploadMedia: drive.Media(
-            Stream.fromIterable([bytes]),
-            bytes.length,
-            contentType: mimeType,
+      final Uri uri = Uri.parse('$baseUrl/api/upload');
+      final http.MultipartRequest request = http.MultipartRequest('POST', uri)
+        ..headers['x-api-key'] = apiKey
+        ..fields['fileName'] = fileName
+        ..files.add(
+          http.MultipartFile.fromBytes(
+            'file',
+            bytes,
+            filename: fileName,
           ),
-          $fields: 'id,webViewLink',
         );
 
-        if (uploaded.id == null) return null;
+      final http.StreamedResponse streamed = await request.send();
+      final http.Response response = await http.Response.fromStream(streamed);
 
-        // Make file readable by anyone with the link.
-        await driveApi.permissions.create(
-          drive.Permission()
-            ..role = 'reader'
-            ..type = 'anyone',
-          uploaded.id!,
+      if (response.statusCode != 200) {
+        // ignore: avoid_print
+        print(
+          'DriveService.uploadFile error: '
+          '${response.statusCode} ${response.body}',
         );
-
-        return uploaded.webViewLink;
-      } finally {
-        authClient.close();
+        return null;
       }
+
+      final Map<String, dynamic> decoded =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      return decoded['webViewLink'] as String?;
     } catch (e) {
       // Drive upload is non-critical — never block the main save flow.
       // ignore: avoid_print
       print('DriveService.uploadFile error: $e');
       return null;
     }
-  }
-
-  // ─── Private helpers ─────────────────────────────────────────────────────────
-
-  Future<http.Client> _buildAuthClient() async {
-    final String jsonStr =
-        await rootBundle.loadString('assets/service_account.json');
-    final Map<String, dynamic> json =
-        jsonDecode(jsonStr) as Map<String, dynamic>;
-
-    final ServiceAccountCredentials credentials =
-        ServiceAccountCredentials.fromJson(json);
-
-    return clientViaServiceAccount(credentials, _scopes);
   }
 }

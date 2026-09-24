@@ -1,0 +1,23 @@
+# Example systemd unit for backend/ (the Drive upload proxy).
+#
+# Copy to /etc/systemd/system/controle-lenha-drive-proxy.service, adjust
+# WorkingDirectory/User, place a real .env next to backend/server.js
+# (see backend/.env.example), then:
+#   systemctl daemon-reload
+#   systemctl enable --now controle-lenha-drive-proxy
+
+[Unit]
+Description=Controle de Lenha TRBJ - Google Drive upload proxy
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/var/www/controle-lenha/backend
+EnvironmentFile=/var/www/controle-lenha/backend/.env
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

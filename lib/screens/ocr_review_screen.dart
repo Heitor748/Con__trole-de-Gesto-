@@ -1,5 +1,6 @@
-import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
@@ -34,7 +35,8 @@ class _OcrReviewScreenState extends State<OcrReviewScreen> {
   final _totalM3Ctrl = TextEditingController();
 
   // ── State ─────────────────────────────────────────────────────────────────────
-  String? _imagePath;
+  Uint8List? _imageBytes;
+  String? _imageName;
   String _ocrText = '';
   DateTime? _selectedDate;
   bool _saving = false;
@@ -44,7 +46,8 @@ class _OcrReviewScreenState extends State<OcrReviewScreen> {
   void initState() {
     super.initState();
 
-    _imagePath = widget.arguments?['imagePath'] as String?;
+    _imageBytes = widget.arguments?['imageBytes'] as Uint8List?;
+    _imageName = widget.arguments?['imageName'] as String?;
     _ocrText = (widget.arguments?['ocrText'] as String?) ?? '';
 
     final extractedData =
@@ -144,11 +147,11 @@ class _OcrReviewScreenState extends State<OcrReviewScreen> {
 
       // ── Upload image to Supabase Storage ────────────────────────────────────
       String? imagemUrl;
-      if (_imagePath != null) {
-        final ext = p.extension(_imagePath!);
+      if (_imageBytes != null) {
+        final ext = p.extension(_imageName ?? 'nota.jpg');
         final fileName = '${const Uuid().v4()}$ext';
         imagemUrl = await SupabaseService.instance
-            .uploadImagem(_imagePath!, fileName);
+            .uploadImagem(_imageBytes!, fileName);
       }
 
       // ── Build NotaLenha ─────────────────────────────────────────────────────
@@ -169,15 +172,17 @@ class _OcrReviewScreenState extends State<OcrReviewScreen> {
       await SupabaseService.instance.insertNota(nota);
 
       // ── Optionally upload to Drive ──────────────────────────────────────────
-      if (_imagePath != null) {
-        final ext = p.extension(_imagePath!).toLowerCase();
+      // Skipped on web: the service account credential is bundled as an
+      // asset and would be publicly downloadable from a deployed web build.
+      if (!kIsWeb && _imageBytes != null) {
+        final ext = p.extension(_imageName ?? 'nota.jpg').toLowerCase();
         final mimeType = (ext == '.png') ? 'image/png' : 'image/jpeg';
         final driveName =
             'nota_${nota.numeroNota}_${DateFormat('yyyyMMdd').format(dataNota ?? DateTime.now())}$ext';
 
         // Fire-and-forget; failure is non-critical
         DriveService.instance
-            .uploadFile(_imagePath!, driveName, mimeType)
+            .uploadFile(_imageBytes!, driveName, mimeType)
             .catchError((_) => null);
       }
 
@@ -253,11 +258,11 @@ class _OcrReviewScreenState extends State<OcrReviewScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // ── Image preview ────────────────────────────────────────────────
-            if (_imagePath != null) ...[
+            if (_imageBytes != null) ...[
               ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                child: Image.file(
-                  File(_imagePath!),
+                child: Image.memory(
+                  _imageBytes!,
                   height: 220,
                   width: double.infinity,
                   fit: BoxFit.cover,

@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -16,7 +16,8 @@ class CameraScreen extends StatefulWidget {
 class _CameraScreenState extends State<CameraScreen> {
   final ImagePicker _picker = ImagePicker();
 
-  String? _imagePath;
+  Uint8List? _imageBytes;
+  String? _imageName;
   bool _processing = false;
   String _statusText = '';
 
@@ -30,8 +31,10 @@ class _CameraScreenState extends State<CameraScreen> {
         preferredCameraDevice: CameraDevice.rear,
       );
       if (photo != null && mounted) {
+        final bytes = await photo.readAsBytes();
         setState(() {
-          _imagePath = photo.path;
+          _imageBytes = bytes;
+          _imageName = photo.name;
         });
       }
     } catch (e) {
@@ -46,8 +49,10 @@ class _CameraScreenState extends State<CameraScreen> {
         imageQuality: 90,
       );
       if (image != null && mounted) {
+        final bytes = await image.readAsBytes();
         setState(() {
-          _imagePath = image.path;
+          _imageBytes = bytes;
+          _imageName = image.name;
         });
       }
     } catch (e) {
@@ -58,7 +63,7 @@ class _CameraScreenState extends State<CameraScreen> {
   // ─── OCR + AI processing ─────────────────────────────────────────────────────
 
   Future<void> _processNota() async {
-    if (_imagePath == null) return;
+    if (_imageBytes == null) return;
 
     setState(() {
       _processing = true;
@@ -67,8 +72,8 @@ class _CameraScreenState extends State<CameraScreen> {
 
     try {
       // Groq vision analysis reads the photo directly, no on-device OCR step.
-      final Map<String, dynamic> extractedData =
-          await GroqService.instance.analyzeNotaImage(_imagePath!);
+      final Map<String, dynamic> extractedData = await GroqService.instance
+          .analyzeNotaImage(_imageBytes!, _imageName ?? 'nota.jpg');
 
       if (!mounted) return;
 
@@ -77,7 +82,8 @@ class _CameraScreenState extends State<CameraScreen> {
         context,
         AppRoutes.ocrReview,
         arguments: {
-          'imagePath': _imagePath,
+          'imageBytes': _imageBytes,
+          'imageName': _imageName ?? 'nota.jpg',
           'ocrText': '',
           'extractedData': extractedData,
         },
@@ -109,7 +115,10 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   void _clearImage() {
-    setState(() => _imagePath = null);
+    setState(() {
+      _imageBytes = null;
+      _imageName = null;
+    });
   }
 
   // ─── Build ───────────────────────────────────────────────────────────────────
@@ -172,7 +181,7 @@ class _CameraScreenState extends State<CameraScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // ── Image preview or selection area ──
-          if (_imagePath == null)
+          if (_imageBytes == null)
             _buildImagePlaceholder()
           else
             _buildImagePreview(),
@@ -180,7 +189,7 @@ class _CameraScreenState extends State<CameraScreen> {
           const SizedBox(height: 24),
 
           // ── Selection buttons ──
-          if (_imagePath == null) ...[
+          if (_imageBytes == null) ...[
             _buildSelectionButton(
               icon: Icons.camera_alt,
               label: 'Tirar Foto',
@@ -197,7 +206,7 @@ class _CameraScreenState extends State<CameraScreen> {
           ],
 
           // ── Process button (shown when image is selected) ──
-          if (_imagePath != null) ...[
+          if (_imageBytes != null) ...[
             Row(
               children: [
                 Expanded(
@@ -292,8 +301,8 @@ class _CameraScreenState extends State<CameraScreen> {
   Widget _buildImagePreview() {
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
-      child: Image.file(
-        File(_imagePath!),
+      child: Image.memory(
+        _imageBytes!,
         height: 300,
         width: double.infinity,
         fit: BoxFit.cover,

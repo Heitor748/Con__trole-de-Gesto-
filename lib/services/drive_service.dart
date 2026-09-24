@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -20,12 +20,12 @@ class DriveService {
 
   // ─── Public API ──────────────────────────────────────────────────────────────
 
-  /// Uploads [filePath] to Google Drive.
+  /// Uploads [bytes] to Google Drive as [fileName].
   ///
   /// [folderId] overrides the DRIVE_FOLDER_ID from .env.
   /// Returns the webViewLink of the uploaded file, or null on error.
   Future<String?> uploadFile(
-    String filePath,
+    Uint8List bytes,
     String fileName,
     String mimeType, {
     String? folderId,
@@ -44,16 +44,11 @@ class DriveService {
           ..mimeType = mimeType
           ..parents = targetFolder.isNotEmpty ? [targetFolder] : null;
 
-        final File localFile = File(filePath);
-        if (!localFile.existsSync()) {
-          throw FileSystemException('File not found', filePath);
-        }
-
         final drive.File uploaded = await driveApi.files.create(
           fileMetadata,
           uploadMedia: drive.Media(
-            localFile.openRead(),
-            localFile.lengthSync(),
+            Stream.fromIterable([bytes]),
+            bytes.length,
             contentType: mimeType,
           ),
           $fields: 'id,webViewLink',

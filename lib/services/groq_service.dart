@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
@@ -18,20 +18,21 @@ class GroqService {
 
   // ─── Public API ───────────────────────────────────────────────────────────────
 
-  /// Reads the firewood manifest (romaneio de lenha) photo at [imagePath] and
-  /// returns a [Map] with the extracted fields.
+  /// Reads the firewood manifest (romaneio de lenha) photo from [imageBytes]
+  /// and returns a [Map] with the extracted fields.
+  ///
+  /// [fileName] is only used to infer the image's MIME type from its
+  /// extension.
   ///
   /// Expected keys in the returned map:
   /// `numero_nota`, `data`, `motorista`, `placa`, `cliente`, `projeto`,
   /// `s1`, `m2`, `total_m3`.
   ///
   /// Values may be `null` when Groq cannot identify a field.
-  Future<Map<String, dynamic>> analyzeNotaImage(String imagePath) async {
-    final File imageFile = File(imagePath);
-    if (!imageFile.existsSync()) {
-      throw FileSystemException('Image not found', imagePath);
-    }
-
+  Future<Map<String, dynamic>> analyzeNotaImage(
+    Uint8List imageBytes,
+    String fileName,
+  ) async {
     final String apiKey = dotenv.env['GROQ_API_KEY'] ?? '';
     if (apiKey.isEmpty) {
       throw StateError(
@@ -40,8 +41,8 @@ class GroqService {
       );
     }
 
-    final String base64Image = base64Encode(await imageFile.readAsBytes());
-    final String mimeType = _mimeTypeFor(imagePath);
+    final String base64Image = base64Encode(imageBytes);
+    final String mimeType = _mimeTypeFor(fileName);
 
     try {
       final http.Response response = await http.post(

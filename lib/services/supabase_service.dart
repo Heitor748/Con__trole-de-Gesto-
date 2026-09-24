@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -97,16 +97,11 @@ class SupabaseService {
 
   // ─── Storage ──────────────────────────────────────────────────────────────────
 
-  /// Uploads the file at [filePath] to the [_bucket] storage bucket under
-  /// [fileName] and returns its public URL.
-  Future<String> uploadImagem(String filePath, String fileName) async {
-    final File file = File(filePath);
-    if (!file.existsSync()) {
-      throw FileSystemException('File not found', filePath);
-    }
-
+  /// Uploads [bytes] to the [_bucket] storage bucket under [fileName] and
+  /// returns its public URL.
+  Future<String> uploadImagem(Uint8List bytes, String fileName) async {
     // Derive content-type from extension.
-    final String ext = filePath.split('.').last.toLowerCase();
+    final String ext = fileName.split('.').last.toLowerCase();
     final String contentType = switch (ext) {
       'jpg' || 'jpeg' => 'image/jpeg',
       'png' => 'image/png',
@@ -114,9 +109,9 @@ class SupabaseService {
       _ => 'application/octet-stream',
     };
 
-    await _client.storage.from(_bucket).upload(
+    await _client.storage.from(_bucket).uploadBinary(
           fileName,
-          file,
+          bytes,
           fileOptions: FileOptions(contentType: contentType, upsert: true),
         );
 

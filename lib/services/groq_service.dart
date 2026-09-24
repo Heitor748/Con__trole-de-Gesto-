@@ -1,22 +1,24 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 
-/// Singleton service that wraps Groq's API for firewood-note OCR analysis.
+/// Singleton service that wraps Groq's vision API for firewood-note analysis.
 ///
-/// Uses Groq's OpenAI-compatible chat completions endpoint.
+/// Reads the manifest photo directly (no separate on-device OCR step) via a
+/// vision-capable model on Groq's OpenAI-compatible chat completions endpoint.
 class GroqService {
   GroqService._();
   static final GroqService instance = GroqService._();
 
   static const String _endpoint =
       'https://api.groq.com/openai/v1/chat/completions';
-  static const String _model = 'llama-3.3-70b-versatile';
+  static const String _model = 'meta-llama/llama-4-scout-17b-16e-instruct';
 
   // ─── Public API ───────────────────────────────────────────────────────────────
 
-  /// Analyses raw OCR text from a firewood manifest (romaneio de lenha) and
+  /// Reads the firewood manifest (romaneio de lenha) photo at [imagePath] and
   /// returns a [Map] with the extracted fields.
   ///
   /// Expected keys in the returned map:
@@ -24,9 +26,10 @@ class GroqService {
   /// `s1`, `m2`, `total_m3`.
   ///
   /// Values may be `null` when Groq cannot identify a field.
-  Future<Map<String, dynamic>> analyzeNotaText(String ocrText) async {
-    if (ocrText.trim().isEmpty) {
-      return _emptyResult();
+  Future<Map<String, dynamic>> analyzeNotaImage(String imagePath) async {
+    final File imageFile = File(imagePath);
+    if (!imageFile.existsSync()) {
+      throw FileSystemException('Image not found', imagePath);
     }
 
     final String apiKey = dotenv.env['GROQ_API_KEY'] ?? '';
@@ -37,7 +40,8 @@ class GroqService {
       );
     }
 
-    final String prompt = _buildPrompt(ocrText);
+    final String base64Image = base64Encode(await imageFile.readAsBytes());
+    final String mimeType = _mimeTypeFor(imagePath);
 
     try {
       final http.Response response = await http.post(
@@ -49,7 +53,18 @@ class GroqService {
         body: jsonEncode({
           'model': _model,
           'messages': [
-            {'role': 'user', 'content': prompt},
+            {
+              'role': 'user',
+              'content': [
+                {'type': 'text', 'text': _buildPrompt()},
+                {
+                  'type': 'image_url',
+                  'image_url': {
+                    'url': 'data:$mimeType;base64,$base64Image',
+                  },
+                },
+              ],
+            },
           ],
           'temperature': 0.1,
           'response_format': {'type': 'json_object'},
@@ -58,7 +73,7 @@ class GroqService {
 
       if (response.statusCode != 200) {
         throw Exception(
-          'GroqService.analyzeNotaText: Groq API error – '
+          'GroqService.analyzeNotaImage: Groq API error – '
           '${response.statusCode} ${response.body}',
         );
       }
@@ -75,22 +90,31 @@ class GroqService {
 
       return _parseResponse(text);
     } catch (e) {
-      throw Exception('GroqService.analyzeNotaText: unexpected error – $e');
+      throw Exception('GroqService.analyzeNotaImage: unexpected error – $e');
     }
   }
 
   // ─── Private helpers ─────────────────────────────────────────────────────────
 
-  String _buildPrompt(String ocrText) {
+  String _mimeTypeFor(String path) {
+    final String ext = path.split('.').last.toLowerCase();
+    switch (ext) {
+      case 'png':
+        return 'image/png';
+      case 'webp':
+        return 'image/webp';
+      case 'jpg':
+      case 'jpeg':
+      default:
+        return 'image/jpeg';
+    }
+  }
+
+  String _buildPrompt() {
     return '''
-Você é um assistente especializado em extrair dados de romaneios de lenha (notas fiscais de transporte de madeira/lenha) preenchidos à mão ou digitados.
+Você é um assistente especializado em ler romaneios de lenha (notas fiscais de transporte de madeira/lenha) fotografados, preenchidos à mão ou digitados.
 
-Analise o texto OCR abaixo, proveniente de um romaneio de lenha, e extraia os campos solicitados. O documento pode conter abreviações, grafia incorreta ou campos parcialmente ilegíveis — use seu melhor julgamento para interpretar os valores.
-
-TEXTO OCR:
-"""
-$ocrText
-"""
+Observe a imagem em anexo e extraia os campos solicitados. O documento pode conter abreviações, letra manuscrita, grafia incorreta ou campos parcialmente ilegíveis — use seu melhor julgamento para interpretar os valores.
 
 Extraia e retorne SOMENTE um objeto JSON válido com os seguintes campos:
 - "numero_nota": número da nota ou romaneio (string ou null)

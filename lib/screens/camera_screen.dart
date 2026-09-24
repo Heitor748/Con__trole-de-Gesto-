@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../app/routes.dart';
-import '../services/ocr_service.dart';
 import '../services/groq_service.dart';
 
 class CameraScreen extends StatefulWidget {
@@ -63,20 +62,13 @@ class _CameraScreenState extends State<CameraScreen> {
 
     setState(() {
       _processing = true;
-      _statusText = 'Lendo texto...';
+      _statusText = 'Analisando com IA...';
     });
 
     try {
-      // Step 1 – OCR
-      final String ocrText =
-          await OcrService.instance.processImage(_imagePath!);
-
-      if (!mounted) return;
-      setState(() => _statusText = 'Analisando com IA...');
-
-      // Step 2 – Groq AI analysis
+      // Groq vision analysis reads the photo directly, no on-device OCR step.
       final Map<String, dynamic> extractedData =
-          await GroqService.instance.analyzeNotaText(ocrText);
+          await GroqService.instance.analyzeNotaImage(_imagePath!);
 
       if (!mounted) return;
 
@@ -86,7 +78,7 @@ class _CameraScreenState extends State<CameraScreen> {
         AppRoutes.ocrReview,
         arguments: {
           'imagePath': _imagePath,
-          'ocrText': ocrText,
+          'ocrText': '',
           'extractedData': extractedData,
         },
       );

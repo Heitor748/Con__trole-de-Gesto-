@@ -1,29 +1,34 @@
 # Gesture PC Control
 
 Controle o mouse, mídia e volume do seu PC usando gestos de mão capturados
-pela câmera do celular.
+pela câmera do celular — direto no navegador, sem instalar app (estilo
+Stream Deck via web).
 
 ## Arquitetura
 
 ```
-[Celular Android]                          [PC Windows]
-  Câmera (CameraX)                          server.py (WebSocket)
+[Navegador do celular]                     [PC Windows]
+  Página web (HTML/JS)                      server.py (aiohttp)
       |                                          ^
       v                                          |
-  MediaPipe Gesture Recognizer                   |
-  (reconhecimento 100% no celular)                |
+  Câmera (getUserMedia)                           |  serve a própria página
+      |                                          |  + recebe comandos
+      v                                          |
+  MediaPipe Gesture Recognizer (JS/WASM)          |
+  (reconhecimento 100% no celular)                 |
       |                                          |
       v                                          |
-  GestureMapper (gesto -> comando)                |
+  mapeamento gesto -> comando                    |
       |                                          |
       v                                          |
-  WebSocketClient  -------- Wi-Fi (rede local) ---+
+  WebSocket (wss://) -------- Wi-Fi (rede local) -+
   {"type": "move", "dx": 10, "dy": -5}
 ```
 
-Todo o reconhecimento de gesto acontece no celular (on-device, via MediaPipe
-Tasks). O app só envia comandos já traduzidos (mover cursor, clicar, mídia,
-volume) para o servidor Python no PC, que executa a ação de fato.
+Todo o reconhecimento de gesto acontece no navegador do celular (on-device,
+via MediaPipe Tasks Vision em WebAssembly). O celular só envia comandos já
+traduzidos (mover cursor, clicar, mídia, volume) para o servidor Python no
+PC, que serve a própria página e executa a ação de fato.
 
 ## Gestos suportados
 
@@ -39,29 +44,29 @@ volume) para o servidor Python no PC, que executa a ação de fato.
 
 ## Estrutura do repositório
 
-- `app/` — app Android (Kotlin + Jetpack Compose + CameraX + MediaPipe Tasks Vision)
-- `server/` — servidor Python (WebSocket + pyautogui) que roda no Windows
+- `server/` — servidor Python (aiohttp: HTTPS + WebSocket + pyautogui) que
+  roda no Windows e também serve a página web
+- `server/static/` — página web (`index.html` + `app.js`) aberta no
+  navegador do celular
 
-## Como buildar o app Android
+## Como usar
 
-1. Abra a pasta raiz do repositório no Android Studio (ela já é o projeto Gradle).
-2. Baixe o modelo `gesture_recognizer.task` do MediaPipe e coloque em
-   `app/src/main/assets/gesture_recognizer.task`:
-   https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/latest/gesture_recognizer.task
-3. Rode o app em um celular físico (a câmera não funciona bem em emulador).
+1. No PC (Windows), rode o servidor — veja [`server/README.md`](server/README.md).
+2. No celular, abra `https://<IP-do-PC>:8765` no navegador (mesma rede Wi-Fi).
+3. Aceite o aviso de certificado autoassinado e permita o acesso à câmera.
+4. Toque em "Conectar" e faça os gestos na frente da câmera.
 
-## Como rodar o servidor
-
-Veja [`server/README.md`](server/README.md).
+Não é necessário Android Studio, build de APK ou cabo USB — só um navegador.
 
 ## Status do projeto
 
-**v1 — apenas Wi-Fi local (WebSocket).** Suporte a Bluetooth e conexão via
-USB estão planejados como próximas etapas, para os casos em que não há
-rede Wi-Fi disponível ou se deseja uma conexão mais estável/sem lag.
+**v1 — apenas Wi-Fi local (WebSocket sobre HTTPS).** Suporte a Bluetooth e
+conexão via USB estão planejados como próximas etapas, para os casos em que
+não há rede Wi-Fi disponível ou se deseja uma conexão mais estável/sem lag.
 
 ## Aviso de segurança
 
-A comunicação entre app e servidor não tem autenticação nem criptografia
-nesta versão — pensado para uso doméstico em rede local confiável. Não
-exponha a porta 8765 do servidor à internet.
+A comunicação entre navegador e servidor não tem autenticação nem
+criptografia de aplicação nesta versão (o HTTPS existe só para liberar a
+câmera) — pensado para uso doméstico em rede local confiável. Não exponha a
+porta 8765 do servidor à internet.

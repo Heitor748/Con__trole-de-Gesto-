@@ -1,22 +1,11 @@
-# Android / Gradle
-build/
-.gradle/
-local.properties
-*.iml
-.idea/
-captures/
-.cxx/
-*.apk
-*.aab
-
-# Assets grandes não versionados (modelo do MediaPipe)
-app/src/main/assets/*.task
-
 # Python
 __pycache__/
 *.pyc
 .venv/
 venv/
+
+# Certificado TLS autoassinado gerado em tempo de execução
+server/certs/
 
 # Sistema
 .DS_Store

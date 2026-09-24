@@ -1,24 +1,33 @@
-"""Servidor que recebe comandos de gesto via WebSocket e controla o PC.
+"""Servidor único (HTTPS) que serve a página web de controle por gestos
+e recebe, via WebSocket, os comandos já reconhecidos no celular.
 
-Executa em segundo plano no Windows, escutando em 0.0.0.0:8765. Cada mensagem
-recebida é um JSON simples, por exemplo:
+Acesse pelo navegador do celular em https://<IP-DO-PC>:8765
+(aceite o aviso de certificado autoassinado na primeira vez).
+
+Mensagens recebidas no WebSocket são um JSON simples, por exemplo:
     {"type": "move", "dx": 10, "dy": -5}
     {"type": "click", "button": "left"}
     {"type": "media", "action": "play_pause"}
     {"type": "volume", "delta": 5}
 
-Sem autenticação/criptografia: pensado para uso em rede local confiável.
+Sem autenticação/criptografia de aplicação: pensado para uso em rede
+local confiável (o TLS aqui é só para liberar a câmera no navegador).
 """
 
 import asyncio
 import json
 import logging
+import ssl
+from pathlib import Path
 
 import pyautogui
-import websockets
+from aiohttp import web, WSMsgType
+
+from certs import ensure_certificate
 
 HOST = "0.0.0.0"
 PORT = 8765
+STATIC_DIR = Path(__file__).parent / "static"
 
 pyautogui.FAILSAFE = False
 
@@ -71,37 +80,58 @@ HANDLERS = {
 }
 
 
-async def handle_connection(websocket):
-    peer = websocket.remote_address
+async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
+    ws = web.WebSocketResponse()
+    await ws.prepare(request)
+
+    peer = request.remote
     log.info("Cliente conectado: %s", peer)
-    try:
-        async for raw_message in websocket:
-            try:
-                command = json.loads(raw_message)
-            except json.JSONDecodeError:
-                log.warning("Mensagem inválida (não é JSON): %r", raw_message)
-                continue
 
-            command_type = command.get("type")
-            handler = HANDLERS.get(command_type)
-            if handler is None:
-                log.warning("Tipo de comando desconhecido: %s", command_type)
-                continue
+    async for msg in ws:
+        if msg.type != WSMsgType.TEXT:
+            continue
+        try:
+            command = json.loads(msg.data)
+        except json.JSONDecodeError:
+            log.warning("Mensagem inválida (não é JSON): %r", msg.data)
+            continue
 
-            log.info("Comando recebido: %s", command)
-            try:
-                handler(command)
-            except Exception:
-                log.exception("Erro ao executar comando: %s", command)
-    finally:
-        log.info("Cliente desconectado: %s", peer)
+        command_type = command.get("type")
+        handler = HANDLERS.get(command_type)
+        if handler is None:
+            log.warning("Tipo de comando desconhecido: %s", command_type)
+            continue
+
+        log.info("Comando recebido: %s", command)
+        try:
+            handler(command)
+        except Exception:
+            log.exception("Erro ao executar comando: %s", command)
+
+    log.info("Cliente desconectado: %s", peer)
+    return ws
 
 
-async def main():
-    log.info("Servidor de controle por gestos escutando em %s:%d", HOST, PORT)
-    async with websockets.serve(handle_connection, HOST, PORT):
-        await asyncio.Future()  # roda para sempre
+def build_app() -> web.Application:
+    app = web.Application()
+    app.router.add_get("/ws", websocket_handler)
+    app.router.add_static("/", STATIC_DIR, show_index=True)
+    return app
+
+
+def build_ssl_context() -> ssl.SSLContext:
+    cert_file, key_file = ensure_certificate()
+    ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ssl_context.load_cert_chain(certfile=str(cert_file), keyfile=str(key_file))
+    return ssl_context
+
+
+def main() -> None:
+    app = build_app()
+    ssl_context = build_ssl_context()
+    log.info("Servidor de controle por gestos em https://%s:%d", HOST, PORT)
+    web.run_app(app, host=HOST, port=PORT, ssl_context=ssl_context)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

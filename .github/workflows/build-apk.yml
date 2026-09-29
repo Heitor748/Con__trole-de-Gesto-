@@ -2,7 +2,7 @@ name: Build APK
 
 on:
   push:
-    branches: [claude/android-firewood-ocr-app-QaW5b, main]
+    branches: [claude/android-firewood-ocr-app-QaW5b, claude/migrate-gradle-plugin-LqPUn, main]
   workflow_dispatch:
 
 jobs:
@@ -23,9 +23,20 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.22.0"
           channel: stable
           cache: true
+
+      - name: Debug Flutter environment
+        run: |
+          flutter --version
+          echo "FLUTTER_ROOT=$FLUTTER_ROOT"
+          echo "ANDROID_HOME=$ANDROID_HOME"
+
+      - name: Create local.properties
+        run: |
+          echo "flutter.sdk=$FLUTTER_ROOT" > android/local.properties
+          echo "sdk.dir=$ANDROID_HOME" >> android/local.properties
+          cat android/local.properties
 
       - name: Create .env file
         run: |
@@ -43,6 +54,50 @@ jobs:
 
       - name: Install dependencies
         run: flutter pub get
+
+      - name: Generate launcher icons
+        run: |
+          python3 - <<'PYEOF'
+          import os, struct, zlib
+
+          def make_chunk(name, data):
+              chunk = name + data
+              return struct.pack('>I', len(data)) + chunk + struct.pack('>I', zlib.crc32(chunk) & 0xffffffff)
+
+          def create_png(size, r, g, b):
+              header = b'\x89PNG\r\n\x1a\n'
+              ihdr = make_chunk(b'IHDR', struct.pack('>IIBBBBB', size, size, 8, 2, 0, 0, 0))
+              raw = b''.join(b'\x00' + bytes([r, g, b] * size) for _ in range(size))
+              idat = make_chunk(b'IDAT', zlib.compress(raw))
+              iend = make_chunk(b'IEND', b'')
+              return header + ihdr + idat + iend
+
+          sizes = {'mipmap-mdpi': 48, 'mipmap-hdpi': 72, 'mipmap-xhdpi': 96, 'mipmap-xxhdpi': 144, 'mipmap-xxxhdpi': 192}
+          base = 'android/app/src/main/res'
+
+          for folder, size in sizes.items():
+              os.makedirs(f'{base}/{folder}', exist_ok=True)
+              with open(f'{base}/{folder}/ic_launcher.png', 'wb') as f:
+                  f.write(create_png(size, 76, 175, 80))
+
+          print('Launcher icons generated.')
+          PYEOF
+
+      - name: Sync Gradle versions with Flutter SDK
+        run: |
+          TEMPLATE=$(find "$FLUTTER_ROOT/packages/flutter_tools/templates" -name "settings.gradle.tmpl" 2>/dev/null | head -1)
+          echo "Flutter version: $(flutter --version --machine | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("frameworkVersion","?"))')"
+          if [ -n "$TEMPLATE" ]; then
+            AGP=$(grep 'com.android.application' "$TEMPLATE" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+            KT=$(grep 'kotlin' "$TEMPLATE" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+            echo "AGP from template: $AGP | Kotlin from template: $KT"
+            [ -n "$AGP" ] && sed -i "s/id \"com.android.application\" version \"[^\"]*\"/id \"com.android.application\" version \"$AGP\"/" android/settings.gradle
+            [ -n "$KT" ]  && sed -i "s/id \"org.jetbrains.kotlin.android\" version \"[^\"]*\"/id \"org.jetbrains.kotlin.android\" version \"$KT\"/" android/settings.gradle
+          else
+            echo "Template not found — keeping existing versions"
+          fi
+          echo "--- settings.gradle ---"
+          cat android/settings.gradle
 
       - name: Build APK (release)
         run: flutter build apk --release --no-tree-shake-icons

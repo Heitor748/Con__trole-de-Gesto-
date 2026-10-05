@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+<title>Gesture PC Control</title>
+<style>
+  body {
+    margin: 0;
+    background: #111;
+    color: #eee;
+    font-family: system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px;
+    box-sizing: border-box;
+  }
+  #videoWrap {
+    position: relative;
+    width: 100%;
+    max-width: 480px;
+  }
+  video, canvas {
+    width: 100%;
+    border-radius: 8px;
+    display: block;
+  }
+  canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+  }
+  .panel {
+    width: 100%;
+    max-width: 480px;
+    margin-top: 12px;
+  }
+  .row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  input {
+    flex: 1;
+    padding: 8px;
+    border-radius: 6px;
+    border: 1px solid #444;
+    background: #222;
+    color: #eee;
+  }
+  button {
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: none;
+    background: #3a7bd5;
+    color: white;
+    font-weight: bold;
+  }
+  #status {
+    font-size: 14px;
+    margin-top: 6px;
+  }
+  .connected { color: #4caf50; }
+  .disconnected { color: #f44336; }
+  .connecting { color: #ff9800; }
+</style>
+</head>
+<body>
+  <h2>Gesture PC Control</h2>
+
+  <div id="videoWrap">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="overlay"></canvas>
+  </div>
+
+  <div class="panel">
+    <div class="row">
+      <input id="host" placeholder="IP do PC (ex: 192.168.0.10)" />
+      <input id="port" placeholder="Porta" value="8765" style="max-width: 80px;" />
+    </div>
+    <div class="row">
+      <button id="connectBtn">Conectar</button>
+      <button id="disconnectBtn">Desconectar</button>
+    </div>
+    <div id="status" class="disconnected">Desconectado</div>
+    <div id="gesture">Último gesto: —</div>
+  </div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

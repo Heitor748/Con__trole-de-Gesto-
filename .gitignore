@@ -1,33 +1,12 @@
-# Flutter / Dart
-.dart_tool/
-.flutter-plugins
-.flutter-plugins-dependencies
-.packages
-.pub-cache/
-.pub/
-build/
-*.lock
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
 
-# Android
-android/local.properties
-android/.gradle/
-android/captures/
-android/app/debug/
-android/app/profile/
-android/app/release/
-*.apk
-*.aab
+# Certificado TLS autoassinado gerado em tempo de execução
+server/certs/
 
-# Secrets — NEVER commit these
-.env
-android/app/google-services.json
-assets/service_account.json
-
-# IDE
-.idea/
-.vscode/
-*.iml
-
-# OS
+# Sistema
 .DS_Store
 Thumbs.db
